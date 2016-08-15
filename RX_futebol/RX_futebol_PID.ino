@@ -1,0 +1,510 @@
+/* APENAS UMAS DESSAS 3 PROXIMAS DIRETIVAS DEVE ESTAR DESCOMENTADA POR VEZ! */
+#define NUM_ROBO 0
+//#define NUM_ROBO 1
+//#define NUM_ROBO 2
+
+//#define DEBUG
+//#define RADIOBIDIR //ativa o envio de dados a partir dos robos (radio birecional).
+
+/* APENAS UMAS DESSAS 2 PROXIMAS DIRETIVAS DEVE ESTAR DESCOMENTADA POR VEZ! */
+//#define PID_OFF
+#define PID_ON
+
+// #define TESTE_OCILOSCOPIO
+
+#include <SPI.h>
+#include "API.h"
+#include "nRF24L01.h"
+#include <PID_v1.h>
+
+//***************************************************
+#define TX_ADR_WIDTH    5   // 5 bytes TX(RX) address width
+#define TX_PLOAD_WIDTH  9   // 9 bytes TX payload
+#define PWM_MOTOR_ESQ 5
+#define DIRECAO_PWM_MOTOR_ESQ_A 6
+#define DIRECAO_PWM_MOTOR_ESQ_B 7
+#define DIRECAO_PWM_MOTOR_DIR_A 8
+#define DIRECAO_PWM_MOTOR_DIR_B 9
+#define PWM_MOTOR_DIR 10
+
+#define ODOMETRIA_ESQ A0
+#define ODOMETRIA_DIR A1
+#define TESTE_ODOMETRIA_ESQ A2
+#define TESTE_ODOMETRIA_DIR A3
+
+byte contOdoEsq = 0; //contador de pulsos, zerado a cada inicio de contagem (a cada novo comando)
+byte contOdoDir = 0;
+char ultContagemOdoEsq = 0; //ultima contagem desde a ultima medida
+char ultContagemOdoDir = 0;
+
+// linha para inicio da comunicação
+byte TX_ADDRESS[TX_ADR_WIDTH] = { 'D', 'C', 'o', 'F', 'C' }; // Define a static TX address
+
+byte rx_buf[TX_PLOAD_WIDTH];
+byte tx_buf[TX_PLOAD_WIDTH] = {0xff};
+
+//**********************PID_vars Begin******************
+#ifdef PID_ON
+double Kp_esq = 4, Ki_esq = 2, Kd_esq = 2;
+double Input_esq, Output_esq, Setpoint_esq;
+
+PID myPID_esq(&Input_esq, &Output_esq, &Setpoint_esq, Kp_esq, Ki_esq, Kd_esq, DIRECT);
+
+double Kp_dir = 4, Ki_dir = 2, Kd_dir = 2;
+double Input_dir, Output_dir, Setpoint_dir;
+
+PID myPID_dir(&Input_dir, &Output_dir, &Setpoint_dir, Kp_dir, Ki_dir, Kd_dir, DIRECT);
+#endif
+//**********************PID_vars End********************
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(CE, OUTPUT);
+  pinMode(CSN, OUTPUT);
+  pinMode(IRQ, INPUT);
+  SPI.begin();
+  delay(50);
+  init_io();                        // Initialize IO port
+  byte sstatus = SPI_Read(STATUS);
+  Serial.println("* RX_Mode Start *");
+  Serial.print("status = ");
+  Serial.println(sstatus, HEX);     // There is read the mode’s status register, the default value should be ‘E’
+  RX_Mode();                        // set RX mode
+
+  pinMode(PWM_MOTOR_ESQ, OUTPUT);
+  pinMode(DIRECAO_PWM_MOTOR_ESQ_A, OUTPUT);
+  pinMode(DIRECAO_PWM_MOTOR_ESQ_B, OUTPUT);
+  pinMode(DIRECAO_PWM_MOTOR_DIR_A, OUTPUT);
+  pinMode(DIRECAO_PWM_MOTOR_DIR_B, OUTPUT);
+  pinMode(PWM_MOTOR_DIR, OUTPUT);
+  pinMode(ODOMETRIA_ESQ, INPUT);
+  pinMode(ODOMETRIA_DIR, INPUT);
+  #ifdef TESTE_OCILOSCOPIO
+  pinMode(TESTE_ODOMETRIA_ESQ, OUTPUT);
+  pinMode(TESTE_ODOMETRIA_DIR, OUTPUT);
+  #endif
+
+  //****************PID_config Begin*****************
+  #ifdef PID_ON
+  myPID_esq.SetOutputLimits(0,255);
+  myPID_esq.SetMode(AUTOMATIC);
+
+  myPID_dir.SetOutputLimits(0,255);
+  myPID_dir.SetMode(AUTOMATIC);
+  #endif
+  //****************PID_config End*******************
+}
+
+#ifdef DEBUG
+void mostraSerial(char * s, int i) {
+  Serial.print(s);
+  if (i>=0)
+  Serial.print(" ");
+  if (i<100)
+  Serial.print(" ");
+  if (abs(i)<10)
+  Serial.print(" ");
+  Serial.print(i);
+}
+#endif
+
+boolean dirEsq = false, dirDir = false;
+byte velBaseEsq, vBaseDir;
+byte vBaseEsq, velBaseDir;
+// int erroAntEsq , erroAntDir;
+// int erroEsq = 0, erroDir = 0;
+// int difRodas, difRodasEsq, difRodasDir;
+int vMax, velEsq, velDir;
+
+void loop(){
+  for (;;) {
+    byte status = SPI_Read(STATUS);                         // read register STATUS's value
+    if (dadosComunicacao()) {                                         // se verdadeiro, chegou dados e estao em rx_buf
+      if (rx_buf[0] == 0x80) {
+        /* As palavras que chegam do rádio são de 8 bits. O mais significativo indica a direção da roda, enquanto os
+        demais indicam a velocidade.
+           Abaixo ocorre um deslocamento de 4 bits para a esquerda no momento de salvar a velocidade. Isso ocorre pois
+        trabalhamos com apenas 7 velocidades, não 127.
+           As palavras são armazenadas no vetor rx_buf onde a posição 0 é um teste e as posições seguintes são as
+        velocidades correspondentes à cada roda. Ex.: pos[1] indica a velocidade (e direcao) da roda esquerda
+        enviada ao robo 0 e a pos[1] indica as mesmas coisas mas para a roda direita o mesmo robo. */
+        velBaseEsq = rx_buf[NUM_ROBO*2+1] >> 4; // recebe a velocidade para a roda esquerda conforme a regra acima.
+        velBaseDir = rx_buf[NUM_ROBO*2+2] >> 4; // recebe a velocidade para a roda direita conforme a regra acima.
+        dirEsq = velBaseEsq & 0x08; // primeiro bit que chega do rádio indica a direção da roda esquerda, por isso a mascara '8'(1000).
+        dirDir = velBaseDir & 0x08; // primeiro bit que chega do rádio indica a direção da roda direita, por isso a mascara '8'(1000).
+        vBaseEsq = velBaseEsq & 0x07; // os ultimos 3 bits indicam a velocidade da roda esquerda, por isso a mascara '7'(0111).
+        vBaseDir = velBaseDir & 0x07; // os ultimos 3 bits indicam a velocidade da roda direita, por isso a mascara '7'(0111).
+
+        // Envio dos dados via rádio para o computador. Sem uso no momento, quando em uso, descomentar #RADIOBIDIR.
+        #ifdef RADIOBIDIR
+        tx_buf[7] = velBaseEsq;
+        tx_buf[8] = velBaseDir;
+        #endif
+
+        //PID ativo
+        #ifdef PID_ON
+        /********************** Inicio dos ajustes de compensação **********************************/
+
+        Input_esq = 3*ultContagemOdoEsq; // Há necessidade de checarmos a proporção das velocidades com a odometria. '3' é um chute!
+        Setpoint_esq = vBaseEsq;
+
+        Input_dir = 3*ultContagemOdoDir; // Há necessidade de checarmos a proporção das velocidades com a odometria. '3' é um chute!
+        Setpoint_dir = vBaseDir;
+
+        myPID_dir.Compute();
+        myPID_esq.Compute();
+
+        velEsq = Output_esq;
+        velDir = Output_dir;
+        /**************************Fim dos ajustes de compensação **********************************/
+
+        /********************** Inicio de acionamento dos motores *********************************/
+        // Controle de velocidade e sentido da roda esquerda.
+        if (vBaseEsq!=0) {
+          analogWrite(PWM_MOTOR_ESQ, velEsq);
+          if (dirEsq) { // andando para tras.
+            digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, HIGH);
+            digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, LOW);
+          } else { // andando para frete
+            digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, LOW);
+            digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, HIGH);
+          }
+        } else { // o robô deve parar.
+          analogWrite(PWM_MOTOR_ESQ, 255); //Parada Rapida L298
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, LOW);
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, LOW);
+        }
+        // Controle de velocidade e sentido da roda direita.
+        if (vBaseDir!=0) {
+          analogWrite(PWM_MOTOR_DIR, velDir);
+          if (dirDir) { // andando para tras.
+            digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, HIGH);
+            digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
+          } else { //andando para frente.
+            digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
+            digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, HIGH);
+          }
+        } else { // o robô deve parar.
+          analogWrite(PWM_MOTOR_DIR, 255); //Parada Rapida L298
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
+        }
+        #endif //end de PID_ON
+
+        // Para teste com o PID desativado.
+        #ifdef PID_OFF
+        analogWrite(PWM_MOTOR_ESQ, (rx_buf[NUM_ROBO + 1] & 0x7f) << 1);
+        if (rx_buf[NUM_ROBO + 1] & 0x80) {
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, HIGH);
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, LOW);
+        } else {
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, LOW);
+          digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, HIGH);
+        }
+
+        analogWrite(PWM_MOTOR_DIR, (rx_buf[NUM_ROBO + 2] & 0x7f) << 1);
+        if (rx_buf[NUM_ROBO + 2] & 0x80) {
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, HIGH);
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
+        } else {
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
+          digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, HIGH);
+        }
+        #endif //end de PID_OFF
+        /**************************Fim do acionamento dos motores **********************************/
+
+        // Envio dos dados via rádio para o computador. Sem uso no momento, quando em uso, descomentar #RADIOBIDIR.
+        #ifdef RADIOBIDIR
+        tx_buf[3] = velEsq;
+        tx_buf[4] = velDir;
+        #endif
+
+        verificaOdoEsq();
+        verificaOdoDir();
+      }
+    }
+  }
+}
+
+boolean dadosComunicacao() {
+  byte sstatus = SPI_Read(STATUS);                         // read register STATUS's value
+  if (sstatus & RX_DR) {
+    tx_buf[1] = ultContagemOdoEsq = contOdoEsq;
+    contOdoEsq = 0;
+    tx_buf[2] = ultContagemOdoDir = contOdoDir;
+    contOdoDir = 0;
+    //SPI_RW_Reg(FLUSH_TX, 0);
+
+    #ifdef DEBUG
+    SPI_Write_Buf(W_ACK_PAYLOAD, tx_buf, TX_PLOAD_WIDTH);             //W_ACK_PAYLOAD
+    for (int i = 0; i < TX_PLOAD_WIDTH; i++) {
+        mostraSerial("", tx_buf[i]);                              // print rx_buf
+    }
+    Serial.print("\n");
+    #endif
+    SPI_Read_Buf(RD_RX_PLOAD, rx_buf, TX_PLOAD_WIDTH);             // read playload to rx_buf
+    SPI_RW_Reg(FLUSH_RX, 0);
+  }
+  SPI_RW_Reg(WRITE_REG + STATUS, sstatus);                     // clear RX_DR or TX_DS or MAX_RT interrupt flag
+  return sstatus & RX_DR;
+}
+
+const int VARIACAO_IGNORAVEL = 100;
+
+void verificaOdoEsq() {
+  static boolean subindo = true;
+  static unsigned long tempoInicio = 0;
+  static unsigned long tempoMudancaFutura = 0;
+  static int valMin = 0;
+  static int valMax = 0;
+
+  int valAtual = analogRead(ODOMETRIA_ESQ);
+
+  unsigned long tempoAtual = millis();
+  if (tempoMudancaFutura != 0)
+    if (tempoAtual >= tempoMudancaFutura) {
+      tempoMudancaFutura = 0;
+      contOdoEsq++;
+      #ifdef TESTE_OCILOSCOPIO
+      digitalWrite(TESTE_ODOMETRIA_ESQ, LOW); // Para teste com o ociloscópio. Gera uma onda quadrada.
+      #endif
+    }
+  if (subindo) {
+    if (valAtual > valMax)
+      valMax = valAtual;
+    else if (valMax - valAtual > VARIACAO_IGNORAVEL) {
+      subindo = false;
+      valMin = valMax;
+      goto contagem;
+    }
+  } else {
+    if (valAtual < valMin)
+      valMin = valAtual;
+    else if (valAtual - valMin > VARIACAO_IGNORAVEL) {
+      subindo = true;
+      valMax = valMin;
+      goto contagem;
+    }
+  }
+  return;
+  contagem: {  // contagem que ocorre apenas quando o tempo medio do meio ciclo anterior é maior que o meio ciclo atual
+    contOdoEsq++;
+    #ifdef TESTE_OCILOSCOPIO
+    digitalWrite(TESTE_ODOMETRIA_ESQ, HIGH); // Para teste com o ociloscópio. Gera uma onda quadrada.
+    #endif
+    if (tempoMudancaFutura != 0) { // se a contagem pelo tempo ainda nao foi feita e o meio ciclo ja acabou (meio ciclo muito menor que anterior), conta
+      contOdoEsq++;
+      #ifdef TESTE_OCILOSCOPIO
+      digitalWrite(TESTE_ODOMETRIA_ESQ, LOW); // Para teste com o ociloscópio. Gera uma onda quadrada.
+      #endif
+    }
+    tempoMudancaFutura = tempoAtual + (tempoAtual - tempoInicio) / 2;
+    tempoInicio = tempoAtual;
+  }
+  return;
+}
+
+void verificaOdoDir() {
+  static boolean subindo = true;
+  static unsigned long tempoInicio = 0;
+  static unsigned long tempoMudancaFutura = 0;
+  static int valMin = 0;
+  static int valMax = 0;
+
+  int valAtual = analogRead(ODOMETRIA_DIR);
+
+  unsigned long tempoAtual = millis();
+  if (tempoMudancaFutura != 0)
+    if (tempoAtual >= tempoMudancaFutura) {
+      tempoMudancaFutura = 0;
+      contOdoDir++;
+      #ifdef TESTE_OCILOSCOPIO
+      digitalWrite(TESTE_ODOMETRIA_DIR, LOW); // Para teste com o ociloscópio. Gera uma onda quadrada.
+      #endif
+    }
+  if (subindo) { // Estado da função da forma de onda.
+    if (valAtual > valMax)
+      valMax = valAtual;
+    else if (valMax - valAtual > VARIACAO_IGNORAVEL) {
+      subindo = false;
+      valMin = valMax;
+      goto contagem;
+    }
+  } else { // Descendo. Estado da função da forma de onda.
+    if (valAtual < valMin)
+      valMin = valAtual;
+    else if (valAtual - valMin > VARIACAO_IGNORAVEL) {
+      subindo = true;
+      valMax = valMin;
+      goto contagem;
+    }
+  }
+  return;
+  contagem: { //contagem que ocorre apenas quando o tempo medio do meio ciclo anterior é maior que o meio ciclo atual
+    contOdoDir++;
+    #ifdef TESTE_OCILOSCOPIO
+    digitalWrite(TESTE_ODOMETRIA_DIR, HIGH); // Para teste com o ociloscópio. Gera uma onda quadrada.
+    #endif
+    if (tempoMudancaFutura != 0) { // se a contagem pelo tempo ainda nao foi feita e o meio ciclo ja acabou (meio ciclo muito menor que anterior), conta
+      contOdoDir++;
+      #ifdef TESTE_OCILOSCOPIO
+      digitalWrite(TESTE_ODOMETRIA_DIR, LOW); // Para teste com o ociloscópio. Gera uma onda quadrada.
+      #endif
+    }
+    tempoMudancaFutura = tempoAtual + (tempoAtual - tempoInicio) / 2;
+    tempoInicio = tempoAtual;
+  }
+  return;
+}
+
+//**** a partir daqui vem o cdigo do SPI + tranceptor *****
+/*********************************************************************
+ **  Device:  nRF24L01+                                              **
+ **  File:   EF_nRF24L01_RX.c                                        **
+ **                                                                  **
+ **                                                                  **
+ **  Copyright (C) 2011 ElecFraks.                                   **
+ **  This example code is in the public domain.                      **
+ **                                                                  **
+ **  Description:                                                    **
+ **  This file is a sample code for your reference.                  **
+ **  It's the v1.0 nRF24L01+ Hardware SPI by arduino                 **
+ **  Created by ElecFreaks. Robi.W,11 June 2011                      **
+ **                                                                  **
+ **  http://www.elecfreaks.com                                       **
+ **                                                                  **
+ **   SPI-compatible                                                 **
+ **   CS - to digital pin 3               - preto                    **
+ **   CSN - to digital pin 4  (SS pin)    - marrom                   **
+ **   MOSI - to digital pin 11 (MOSI pin) - laranja                  **
+ **   MISO - to digital pin 12 (MISO pin) - amarelo                  **
+ **   CLK - to digital pin 13 (SCK pin)   - vermelho                 **
+ *********************************************************************/
+//**************************************************
+// Function: init_io();
+// Description:
+// flash led one time,chip enable(ready to TX or RX Mode),
+// Spi disable,Spi clock line init high
+//**************************************************
+void init_io(void) {
+  digitalWrite(IRQ, 0);
+  digitalWrite(CE, 0);      // chip enable
+  digitalWrite(CSN, 1);                 // Spi disable
+}
+
+/************************************************************************
+ **   * Function: SPI_RW();
+ *
+ * Description:
+ * Writes one unsigned char to nRF24L01, and return the unsigned char read
+ * from nRF24L01 during write, according to SPI protocol
+ ************************************************************************/
+unsigned char SPI_RW(unsigned char Byte) {
+  return SPI.transfer(Byte);
+}
+
+/**************************************************/
+
+/**************************************************
+ * Function: SPI_RW_Reg();
+ *
+ * Description:
+ * Writes value 'value' to register 'reg'
+ /**************************************************/
+unsigned char SPI_RW_Reg(unsigned char reg, unsigned char value) {
+  unsigned char status;
+
+  digitalWrite(CSN, 0);                   // CSN low, init SPI transaction
+  SPI_RW(reg);                            // select register
+  SPI_RW(value);                          // ..and write value to it..
+  digitalWrite(CSN, 1);                   // CSN high again
+
+  return (status);                   // return nRF24L01 status unsigned char
+}
+/**************************************************/
+
+/**************************************************
+ * Function: SPI_Read();
+ *
+ * Description:
+ * Read one unsigned char from nRF24L01 register, 'reg'
+ /**************************************************/
+unsigned char SPI_Read(unsigned char reg) {
+  unsigned char reg_val;
+
+  digitalWrite(CSN, 0);                // CSN low, initialize SPI communication...
+  SPI_RW(reg);                         // Select register to read from..
+  reg_val = SPI_RW(0);                 // ..then read register value
+  digitalWrite(CSN, 1);                // CSN high, terminate SPI communication
+
+  return (reg_val);                     // return register value
+}
+/**************************************************/
+
+/**************************************************
+ * Function: SPI_Read_Buf();
+ *
+ * Description:
+ * Reads 'unsigned chars' #of unsigned chars from register 'reg'
+ * Typically used to read RX payload, Rx/Tx address
+ /**************************************************/
+unsigned char SPI_Read_Buf(unsigned char reg, unsigned char *pBuf, unsigned char bytes) {
+  unsigned char sstatus, i;
+
+  digitalWrite(CSN, 0);                   // Set CSN low, init SPI tranaction
+  sstatus = SPI_RW(reg);            // Select register to write to and read status unsigned char
+
+  for (i = 0; i < bytes; i++) {
+    pBuf[i] = SPI_RW(0);    // Perform SPI_RW to read unsigned char from nRF24L01
+  }
+
+  digitalWrite(CSN, 1);                   // Set CSN high again
+
+  return (sstatus);                  // return nRF24L01 status unsigned char
+}
+/**************************************************/
+
+/**************************************************
+ * Function: SPI_Write_Buf();
+ *
+ * Description:
+ * Writes contents of buffer '*pBuf' to nRF24L01
+ * Typically used to write TX payload, Rx/Tx address
+ /**************************************************/
+unsigned char SPI_Write_Buf(unsigned char reg, unsigned char *pBuf, unsigned char bytes) {
+  unsigned char sstatus, i;
+
+  digitalWrite(CSN, 0);                   // Set CSN low, init SPI tranaction
+  sstatus = SPI_RW(reg);             // Select register to write to and read status unsigned char
+  for (i = 0; i < bytes; i++) {          // then write all unsigned char in buffer(*pBuf)
+    SPI_RW(*pBuf++);
+  }
+  digitalWrite(CSN, 1);                   // Set CSN high again
+  return (sstatus);                  // return nRF24L01 status unsigned char
+}
+/**************************************************/
+
+void RX_Mode(void) {
+  digitalWrite(CE, 0);
+
+  SPI_Write_Buf(WRITE_REG + TX_ADDR, TX_ADDRESS, TX_ADR_WIDTH);    // Writes TX_Address to nRF24L01
+  SPI_Write_Buf(WRITE_REG + RX_ADDR_P0, TX_ADDRESS, TX_ADR_WIDTH); // RX_Addr0 same as TX_Adr for Auto.Ack
+
+  SPI_RW_Reg(WRITE_REG + EN_AA, 0x01);      // Enable Auto.Ack:Pipe0
+  SPI_RW_Reg(WRITE_REG + EN_RXADDR, 0x01);  // Enable Pipe0
+  SPI_RW_Reg(WRITE_REG + RF_CH, 'R');        // Select RF channel 40
+  SPI_RW_Reg(WRITE_REG + RX_PW_P0, TX_PLOAD_WIDTH); // Select same RX payload width as TX Payload width
+  SPI_RW_Reg(WRITE_REG + RF_SETUP, 0x07);   // TX_PWR:0dBm, Datarate:2Mbps, LNA:HCURR
+  SPI_RW_Reg(WRITE_REG + CONFIG, 0x0f);     // Set PWR_UP bit, enable CRC(2 unsigned chars) & Prim:RX. RX_DR enabled..
+
+  #ifdef DEBUG
+  SPI_RW_Reg(WRITE_REG + FEATURE, 6);       //Enables Dynamic Payload Length e Payload with ACK
+  SPI_RW_Reg(WRITE_REG + DYNPD, 1);
+  #endif
+
+  SPI_Write_Buf(WR_TX_PLOAD, tx_buf, TX_PLOAD_WIDTH);
+
+  digitalWrite(CE, 1);                             // Set CE pin high to enable RX device
+  //  This device is now ready to receive one packet of 16 unsigned chars payload from a TX device sending to address
+  //  '3443101001', with auto acknowledgment, retransmit count of 10, RF channel 40 and datarate = 2Mbps.
+}
