@@ -39,6 +39,7 @@ byte tx_buf[TX_PLOAD_WIDTH] = {0xff};
 		kr[8]={1, 16, 16, 16, 16, 16, 16, 16},	// relacao entre as rodas
 		kv[8]={0, 24, 27, 32, 39, 48, 59, 72};	// integral inicial
     byte	vOdo[]={0, 3,  6,  9, 12, 16, 19, 22}; // a indice é a velocidade e os valores relacionados aos ìndices são os pulsos do odometro.
+		
 //***************************************************
 void setup() {
   Serial.begin(115200);
@@ -89,7 +90,7 @@ void mostraSerial(char * s, int i) {
 
 void loop() {
   for (;;) {
-    byte status = SPI_Read(STATUS);                         // read register STATUS's value    
+    byte status = SPI_Read(STATUS);                         // read register STATUS's value
     if (dadosComunicacao()) {                                         // se verdadeiro, chegou dados e estao em rx_buf
       if (rx_buf[0] == 0x80) {
         /* As palavras que chegam do rádio são de 8 bits. O mais significativo indica a direção da roda, enquanto os
@@ -114,11 +115,11 @@ void loop() {
         // determina o erro da roda, fazendo a diferença do que deveria ser (valor empirico de odometria) com o ultimo valor da odometria multipica por 4.
         erroEsq = ((int)vOdo[vBaseEsq]-ultContagemOdoEsq)<<2; //deslocamento para casas decimais
         erroDir = ((int)vOdo[vBaseDir]-ultContagemOdoDir)<<2; //deslocamento para casas decimais
-        
+
         #ifdef DEBUG
         mostraSerial("a ",erroEsq);
         #endif
-        
+
         // Envio dos dados via rádio para o computador. Sem uso no momento, quando em uso, descomentar #RADIOBIDIR.
         #ifdef RADIOBIDIR
         tx_buf[5] = erroEsq;
@@ -126,16 +127,16 @@ void loop() {
         tx_buf[7] = velBaseEsq;
         tx_buf[8] = velBaseDir;
         #endif
-        
+
 		/* Calcula a diferença de velocidade entre as rodas para realizar a compensação. */
         difRodas=((int)vBaseEsq*ultContagemOdoDir-(int)vBaseDir*ultContagemOdoEsq)<<4; // deslocamento para casas decimais, logo o numero será multiplicado por 16.
-        
+
         difRodasDir = -difRodas/kr[vBaseDir];
         difRodasEsq =  difRodas/kr[vBaseEsq];
-        
+
         erroEsq+=difRodasEsq;
         erroDir+=difRodasDir;
-        
+
         //intEsq=(intEsq+erroEsq)/2;
         //intDir=(intDir+erroDir)/2;
 
@@ -155,7 +156,7 @@ void loop() {
 
         velEsq+=kv[vBaseEsq];
         velDir+=kv[vBaseDir];
-        
+
         if (velEsq<0) { // a velocidade pode ser negativa dependendo do valor do erro.
           velEsq = -velEsq;
           dirEsq = !dirEsq; // o robo tenta inveter o sentido da roda para parar mais rapido.
@@ -166,17 +167,17 @@ void loop() {
           dirDir = !dirDir; // o robo tenta inveter o sentido da roda para parar mais rapido.
           velDir = 0; // a velocidade é zerada pois o odometro não identifica o lado que a roda esta girando.
         }
-        
+
         #ifdef DEBUG
         mostraSerial("c ", velEsq);
         mostraSerial("d ", vBaseEsq);
         #endif
-       
+
         /*Serial.print("E:");
         Serial.print(tx_buf[1]);
         Serial.print("D:");
         Serial.print(tx_buf[2]);*/
-        
+
         vMax = max(velEsq, velDir);
         if (vMax>250) { // a velocidade nao pode ser mais de 250 pois nao podemos usar mais que toda a tensão dispoivel no motor.
           velEsq = ((250>>1)*(unsigned)velEsq/vMax)<<1; // deslocamentos (para frente e para tras) feitos para arredondamento dos valores.
@@ -214,7 +215,7 @@ void loop() {
           digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
           digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
         }
-        
+
         /*Serial.print(" E:");
         Serial.print(velEsq);
         Serial.print("D:");
@@ -224,7 +225,7 @@ void loop() {
         tx_buf[3] = velEsq;
         tx_buf[4] = velDir;
         #endif
-        
+
         /*
         analogWrite(PWM_MOTOR_ESQ, (rx_buf[NUM_ROBO + 1] & 0x7f) << 1);
         if (rx_buf[NUM_ROBO + 1] & 0x80) {
@@ -260,13 +261,13 @@ void loop() {
 
 boolean dadosComunicacao() {
   byte sstatus = SPI_Read(STATUS);                         // read register STATUS's value
-  if (sstatus & RX_DR) {     
+  if (sstatus & RX_DR) {
     tx_buf[1] = ultContagemOdoEsq = contOdoEsq;
     contOdoEsq = 0;
     tx_buf[2] = ultContagemOdoDir = contOdoDir;
     contOdoDir = 0;
     //SPI_RW_Reg(FLUSH_TX, 0);
-    
+
     #ifdef DEBUG
     SPI_Write_Buf(W_ACK_PAYLOAD, tx_buf, TX_PLOAD_WIDTH);             //W_ACK_PAYLOAD
     for (int i = 0; i < TX_PLOAD_WIDTH; i++) {
@@ -528,4 +529,3 @@ void RX_Mode(void) {
   //  This device is now ready to receive one packet of 16 unsigned chars payload from a TX device sending to address
   //  '3443101001', with auto acknowledgment, retransmit count of 10, RF channel 40 and datarate = 2Mbps.
 }
-
