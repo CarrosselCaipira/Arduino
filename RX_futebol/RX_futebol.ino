@@ -100,8 +100,8 @@ void loop() {
            As palavras são armazenadas no vetor rx_buf onde a posição 0 é um teste e as posições seguintes são as
         velocidades correspondentes à cada roda. Ex.: pos[1] indica a velocidade (e direcao) da roda esquerda
         enviada ao robo 0 e a pos[1] indica as mesmas coisas mas para a roda direita o mesmo robo. */
-        velBaseEsq = rx_buf[NUM_ROBO*2+1] >> 4; // recebe a velocidade para a roda esquerda conforme a regra acima.
-        velBaseDir = rx_buf[NUM_ROBO*2+2] >> 4; // recebe a velocidade para a roda direita conforme a regra acima.
+        velBaseEsq = rx_buf[NUM_ROBO*2+1]; // recebe a velocidade para a roda esquerda conforme a regra acima.
+        velBaseDir = rx_buf[NUM_ROBO*2+2]; // recebe a velocidade para a roda direita conforme a regra acima.
         dirEsq = velBaseEsq & 0x08; // primeiro bit que chega do rádio indica a direção da roda esquerda, por isso a mascara '8'(1000).
         dirDir = velBaseDir & 0x08; // primeiro bit que chega do rádio indica a direção da roda direita, por isso a mascara '8'(1000).
         vBaseEsq = velBaseEsq & 0x07; // os ultimos 3 bits indicam a velocidade da roda esquerda, por isso a mascara '7'(0111).
