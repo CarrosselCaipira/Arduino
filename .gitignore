@@ -27,3 +27,9 @@
 *.exe
 *.out
 *.app
+
+# mac_os backup file
+.DS_Store
+
+# kde linux directory temp file
+.directory
