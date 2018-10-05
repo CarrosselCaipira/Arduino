@@ -1,26 +1,13 @@
+/* CÓDIGO ARDUINO DOS ROBÔS QUE RECEBEM AS INFORMAÇÕES DO RÁDIO. */
+
 #include <SPI.h>
 #include <nRF24L01.h>
-#include <RF24.h>
+#include <RF24.h> /* http://tmrh20.github.io/RF24/ */
 
 #define ODOMETRIA_ESQ A0
 #define ODOMETRIA_DIR A1
 #define TESTE_ODOMETRIA_ESQ A2
 #define TESTE_ODOMETRIA_DIR A3
-byte contOdoEsq = 0;//contador de pulsos, zerado a cada inicio de contagem (a cada novo comando)
-byte contOdoDir = 0;
-char ultContagemOdoEsq = 0;//ultima contagem desde a ultima medida
-char ultContagemOdoDir = 0;
-int valMinEsq = 1000;
-int valMinDir = 1000;
-int valMaxEsq = 0;
-int valMaxDir = 0;
-unsigned long tempoAnterior = 0;
-
-int numero = 0;
-int erro = 0;
-
-// Define qual robo é esse (0, 1 ou 2)
-int robo = 0;
 
 #define PWM_MOTOR_ESQ 5
 #define DIRECAO_PWM_MOTOR_ESQ_A 6
@@ -29,19 +16,48 @@ int robo = 0;
 #define DIRECAO_PWM_MOTOR_DIR_B 9
 #define PWM_MOTOR_DIR 10
 
-RF24 radio(2, 3);
+#define RADIO_ENABLE 2 /* O pino ligado ao Chip Enable no módulo do rádio */
+#define RADIO_SELECT 3 /* O pino ligado ao Chip Select no módulo do rádio */
+#define SERIAL_BIT_RATE 9600 /* Pode também ser definido para 115200. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em TX.ino */
 
-// Armazena os bytes recebidos pelo rádio
-byte text[9];
+#define PIPE_LEITURA 0 /* indica qual pipe será aberta para leitura das informações vindas do rádio. Valores possíveis: [0,5]. 0 e 1 podem usar endereços de 5 bytes, os demais apenas 1. Talvez seja interessante trocar para 1 caso consideremos a comunicação bidirecional pois as escritas ocorrem  nesse pipe. */
 
-boolean dirE = false;
-boolean dirD = false;
-boolean got = false;
+#define RX_BUFFER_SIZE 9 /* tamanho do buffer utilizado para armazenar os dados recebidos. Deve ser definido igual em RX.ino, TX.ino e em radio.hpp */
 
-const byte rxAddr[6] = { 'U', 'n', 'e', 's', 'p' };
+/* contadores de pulsos de odometria, é zerado a cada novo comando vindo do rádio */
+/* ATUAIS */
+byte contOdoEsq = 0;
+byte contOdoDir = 0;
+/* ANTERIORES */
+char ultContagemOdoEsq = 0;
+char ultContagemOdoDir = 0;
 
-void setup()
-{
+/* Velocidades mínimas para os motores vencerem a inércia. CORRETO? */
+/* const? */ int valMinEsq = 1000;
+/* const? */ int valMinDir = 1000;
+
+/* const? */ int valMaxEsq = 0; /* ??? */
+/* const? */ int valMaxDir = 0; /* ??? */
+
+unsigned long tempoAnterior = 0; /* ??? */
+
+int numero = 0; /* ??? */
+int erro = 0; /* ??? */
+
+/* Define qual robo é esse (valores possíveis: 0, 1 ou 2) */
+const int robo = 0;
+
+RF24 radio(RADIO_ENABLE, RADIO_SELECT); /* por que não em setup? */
+
+byte rxBuffer[RX_BUFFER_SIZE]; /* Buffer usado para armazenar os bytes recebidos através do rádio. */
+
+boolean dirE = false; /* necessarios mais detalhes. Indica o sentido de rotação? */
+boolean dirD = false; /* necessarios mais detalhes. Indica o sentido de rotação? */
+
+// Identificador do rádio
+const byte rxChave[6] = { 'U', 'n', 'e', 's', 'p' }; /* Chave para comunicação entre RX e TX. Deve ser a mesma em ambos os códigos. */
+
+void setup() {
   pinMode(PWM_MOTOR_ESQ, OUTPUT);
   pinMode(DIRECAO_PWM_MOTOR_ESQ_A, OUTPUT);
   pinMode(DIRECAO_PWM_MOTOR_ESQ_B, OUTPUT);
@@ -50,37 +66,37 @@ void setup()
   pinMode(PWM_MOTOR_DIR, OUTPUT);
   pinMode(ODOMETRIA_ESQ, INPUT);
   pinMode(ODOMETRIA_DIR, INPUT);
-  
+
   while (!Serial);
-  Serial.begin(9600);
-  
+  Serial.begin(SERIAL_BIT_RATE);
+
   radio.begin();
-  radio.openReadingPipe(0, rxAddr);
-  
+
+  /* Abrindo o pipe para leitura utilizando.  */
+  radio.openReadingPipe(PIPE_LEITURA, rxAddr);
+
+  /* Habilitando o radio para a leitura propriamente dita. */
   radio.startListening();
 }
 
-void loop()
-{
-  got = false;
-  com();
-  if(got) {
+void loop() {
+  /* se o radio esteja disponível... recebe as informações de velocidade e anda. */
+  if(com()) {
     anda();
   }
-  
-  
+
   //verificaOdoEsq();
   //verificaOdoDir();
 }
 
-// Recebe comandos novos
-void com() {
-  if (radio.available())
-  {
-    got = true;
-    radio.read(&text, sizeof(text));
-    if(text[0] == 0x80){
-      Serial.println("Recebemos algo");
+/* Recebe comandos novos */
+bool com() {
+  bool got = radio.available();
+
+  if (got) {
+    radio.read(&rxBuffer, sizeof(rxBuffer));
+    if(rxBuffer[0] == 0x80){
+          Serial.println("Recebemos algo");
     }
   }
 }
@@ -96,54 +112,52 @@ void anda() {
   /*
     // Trabalha os valores deslocados (0 - 256)
     // Verifica a direção da roda esquerda
-    if(text[1+2*robo] >= 128) {
+    if(rxBuffer[1+2*robo] >= 128) {
       dirE = LOW;
       // Tira o primeiro bit
-      text[1+2*robo] = text[1+2*robo] - 128;
+      rxBuffer[1+2*robo] = rxBuffer[1+2*robo] - 128;
     }
     else {
       dirE = HIGH;
     }
 
     // Verifica a direção da roda direita
-    if(text[2+2*robo] >= 128) {
+    if(rxBuffer[2+2*robo] >= 128) {
       dirD = LOW;
-      text[2+2*robo] = text[2+2*robo] - 128;
+      rxBuffer[2+2*robo] = rxBuffer[2+2*robo] - 128;
     }
     else {
-      text[2+2*robo] = text[2+2*robo] - 128;
+      rxBuffer[2+2*robo] = rxBuffer[2+2*robo] - 128;
     }
    */
 
    // Verifica a direção da roda esquerda
-    if(text[1+2*robo] < 0) {
+    if(rxBuffer[1+2*robo] < 0) {
       dirE = LOW;
       // Tira o primeiro bit
-      text[1+2*robo] = text[1+2*robo] * -1;
+      rxBuffer[1+2*robo] = rxBuffer[1+2*robo] * -1;
     }
     else {
       dirE = HIGH;
     }
 
     // Verifica a direção da roda direita
-    if(text[2+2*robo] < 0) {
+    if(rxBuffer[2+2*robo] < 0) {
       dirD = LOW;
-      text[2+2*robo] = text[2+2*robo] * -1;
+      rxBuffer[2+2*robo] = rxBuffer[2+2*robo] * -1;
     }
     else {
       dirD = HIGH;
     }
 
     // Define a velocidade de cada roda
-    analogWrite(PWM_MOTOR_ESQ, 2*text[1+2*robo]);
-    analogWrite(PWM_MOTOR_DIR, 2*text[1+2*robo]);
+    analogWrite(PWM_MOTOR_ESQ, 2*rxBuffer[1+2*robo]);
+    analogWrite(PWM_MOTOR_DIR, 2*rxBuffer[1+2*robo]);
 
     // Define o sentido de giro de cada roda
     digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, dirE);
     digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, !dirE);
     digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, dirD);
     digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, !dirD);
-    
+
 }
-
-

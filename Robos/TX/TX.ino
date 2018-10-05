@@ -1,37 +1,52 @@
+/* CODIGO ARDUINO DO RÁDIO QUE ENVIA AS INFORMAÇÕES AOS ROBÔS. */
+
 #include <SPI.h>
 #include <nRF24L01.h>
-#include <RF24.h>
+#include <RF24.h> /* http://tmrh20.github.io/RF24/ */
+
+#define RADIO_ENABLE 2 /* O pino ligado ao Chip Enable no módulo do rádio */
+#define RADIO_SELECT 3 /* O pino ligado ao Chip Select no módulo do rádio */
+#define SERIAL_BIT_RATE 9600 /* Pode também ser definido para 115200. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em RX.ino */
+
+#define TX_BUFFER_SIZE 9 /* (conferir, parecer estarmos usando 7, 2 por robo e 1 para o 0x80) tamanho do buffer utilizado para armazenar os dados enviados. Deve ser definido igual em RX.ino, TX.ino e em radio.hpp */
+
+#define TEMPO_RETRY 15 /* intervalo de tempo entre cada tentativa de leitura. Definido em multiplos de 250us, portanto 0 = 250us e 15 = 4000us. (us: microsegundos) */
+#define NUM_RETRY 15 /* número de tentativas antes de desistir da leitura */
 
 // Portas CE e CSN do SPI
-RF24 radio(2, 3);
+RF24 radio(RADIO_ENABLE, RADIO_SELECT); /* por que não em setup? */
 
 // Identificador do rádio
-const byte rxAddr[6] = { 'U', 'n', 'e', 's', 'p' };
-unsigned char rxBuf[9] = {128};
-unsigned char caractere_inicial = 0;
-// Debug
-int numero = 0;
+const byte txChave[6] = { 'U', 'n', 'e', 's', 'p' }; /* Chave para comunicação entre RX e TX. Deve ser a mesma em ambos os códigos. */
+
+unsigned char txBuffer[TX_BUFFER_SIZE] = {128}; /* Buffer usado para armazenar os bytes que chegaram a Serial e serem enviados através do rádio para os robôs. */
+
+const unsigned char caractere_inicial = 0x80; /* primeiro byte da transmissao - fixo */
+
+const int numero = 0; /* DEBUG */
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(SERIAL_BIT_RATE);
   radio.begin();
-  radio.setRetries(15, 15);
-  radio.openWritingPipe(rxAddr);
-  
+
+  /* configurações de re-tentativas */
+  radio.setRetries(TEMPO_RETRY, NUM_RETRY);
+  /* abrindo pipe para escrita */
+  radio.openWritingPipe(txChave);
+
+  /* ativando modo de transmissao */
   radio.stopListening();
 }
 
 void loop()
 {
   if(Serial.available() > 0) {
-    Serial.readBytes(rxBuf[1], 6);
+    Serial.readBytes(txBuffer[1], 6);
   }
-      caractere_inicial = 0x80;
-      rxBuf[0] = caractere_inicial;
-      // Envia os dados
-      radio.write(&rxBuf, sizeof(rxBuf));
-      Serial.println(numero);
-      delay(250);
-    caractere_inicial = 0; 
+  txBuffer[0] = caractere_inicial;
+  // Envia os dados
+  radio.write(&txBuffer, sizeof(txBuffer));
+  Serial.println(numero);
+  delay(250);
 }
