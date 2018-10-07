@@ -47,7 +47,10 @@ int erro = 0; /* ??? */
 /* Define qual robo é esse (valores possíveis: 0, 1 ou 2) */
 const int robo = 0;
 
-RF24 radio(RADIO_ENABLE, RADIO_SELECT); /* por que não em setup? */
+const int indexRodaEsq = 1 + 2 * robo; /* index da roda esquerda no rxBuffer. */
+const int indexRodaDir = 2 + 2 * robo; /* index da roda direita no rxBuffer. */
+
+RF24 radio(RADIO_ENABLE, RADIO_SELECT);
 
 byte rxBuffer[RX_BUFFER_SIZE]; /* Buffer usado para armazenar os bytes recebidos através do rádio. */
 
@@ -104,8 +107,10 @@ bool com() {
 // Movimenta os motores
 void anda() {
 
-    dirE = HIGH;
-    dirD = HIGH;
+  byte velRodaEsq, velRodaDir; /* velocidades que chegaram do radio */
+
+  dirE = HIGH;
+  dirD = HIGH;
 
 // Atribui as velocidades
 
@@ -132,27 +137,27 @@ void anda() {
    */
 
    // Verifica a direção da roda esquerda
-    if(rxBuffer[1+2*robo] < 0) {
+    if(rxBuffer[indexRodaEsq] < 0) {
       dirE = LOW;
       // Tira o primeiro bit
-      rxBuffer[1+2*robo] = rxBuffer[1+2*robo] * -1;
+      velRodaEsq = rxBuffer[indexRodaEsq] * -1;
     }
     else {
       dirE = HIGH;
     }
 
     // Verifica a direção da roda direita
-    if(rxBuffer[2+2*robo] < 0) {
+    if(rxBuffer[indexRodaDir] < 0) {
       dirD = LOW;
-      rxBuffer[2+2*robo] = rxBuffer[2+2*robo] * -1;
+      velRodaDir = rxBuffer[indexRodaDir] * -1;
     }
     else {
       dirD = HIGH;
     }
 
     // Define a velocidade de cada roda
-    analogWrite(PWM_MOTOR_ESQ, 2*rxBuffer[1+2*robo]);
-    analogWrite(PWM_MOTOR_DIR, 2*rxBuffer[1+2*robo]);
+    analogWrite(PWM_MOTOR_ESQ, 2 * velRodaEsq);
+    analogWrite(PWM_MOTOR_DIR, 2 * velRodaDir);
 
     // Define o sentido de giro de cada roda
     digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, dirE);
