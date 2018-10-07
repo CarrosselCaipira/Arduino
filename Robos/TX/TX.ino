@@ -14,7 +14,7 @@
 #define NUM_RETRY 15 /* número de tentativas antes de desistir da leitura */
 
 // Portas CE e CSN do SPI
-RF24 radio(RADIO_ENABLE, RADIO_SELECT); /* por que não em setup? */
+RF24 radio(RADIO_ENABLE, RADIO_SELECT);
 
 // Identificador do rádio
 const byte txChave[6] = { 'U', 'n', 'e', 's', 'p' }; /* Chave para comunicação entre RX e TX. Deve ser a mesma em ambos os códigos. */
