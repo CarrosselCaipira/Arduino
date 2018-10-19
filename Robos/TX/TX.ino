@@ -6,7 +6,7 @@
 
 #define RADIO_ENABLE 2 /* O pino ligado ao Chip Enable no módulo do rádio */
 #define RADIO_SELECT 3 /* O pino ligado ao Chip Select no módulo do rádio */
-#define SERIAL_BIT_RATE 9600 /* Pode também ser definido para 115200. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em RX.ino */
+#define SERIAL_BIT_RATE 115200 /* Pode ser definido para 115200 ou 9600. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em RX.ino */
 
 #define TX_BUFFER_SIZE 9 /* (conferir, parecer estarmos usando 7, 2 por robo e 1 para o 0x80) tamanho do buffer utilizado para armazenar os dados enviados. Deve ser definido igual em RX.ino, TX.ino e em radio.hpp */
 
@@ -37,16 +37,20 @@ void setup()
 
   /* ativando modo de transmissao */
   radio.stopListening();
+
+  Serial.println("Setup Completo");
 }
 
 void loop()
 {
-  if(Serial.available() > 0) {
-    Serial.readBytes(txBuffer[1], 6);
+  for(;;) {
+    if(Serial.available()) {
+      /* lendo o que vem da serial (já vem com o primeiro byte 0x80.) */
+      Serial.readBytes(txBuffer, TX_BUFFER_SIZE);
+
+      /* fazendo o envio não bloqueante (apenas bloqueia caso o buffer esteja cheio). */
+      if(!radio.writeFast(txBuffer, sizeof(txBuffer)))
+        Serial.println("Falha no Envio dos Dados");
+    }
   }
-  txBuffer[0] = caractere_inicial;
-  // Envia os dados
-  radio.write(&txBuffer, sizeof(txBuffer));
-  Serial.println(numero);
-  delay(250);
 }

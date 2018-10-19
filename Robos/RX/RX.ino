@@ -18,9 +18,9 @@
 
 #define RADIO_ENABLE 2 /* O pino ligado ao Chip Enable no módulo do rádio */
 #define RADIO_SELECT 3 /* O pino ligado ao Chip Select no módulo do rádio */
-#define SERIAL_BIT_RATE 9600 /* Pode também ser definido para 115200. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em TX.ino */
+#define SERIAL_BIT_RATE 115200 /* Pode também ser definido para 115200. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em TX.ino */
 
-#define PIPE_LEITURA 0 /* indica qual pipe será aberta para leitura das informações vindas do rádio. Valores possíveis: [0,5]. 0 e 1 podem usar endereços de 5 bytes, os demais apenas 1. Talvez seja interessante trocar para 1 caso consideremos a comunicação bidirecional pois as escritas ocorrem  nesse pipe. */
+#define PIPE_LEITURA 1 /* indica qual pipe será aberta para leitura das informações vindas do rádio. Valores possíveis: [0,5]. 0 e 1 podem usar endereços de 5 bytes, os demais apenas 1. Talvez seja interessante trocar para 1 caso consideremos a comunicação bidirecional pois as escritas ocorrem  nesse pipe. */
 
 #define RX_BUFFER_SIZE 9 /* tamanho do buffer utilizado para armazenar os dados recebidos. Deve ser definido igual em RX.ino, TX.ino e em radio.hpp */
 
@@ -76,7 +76,7 @@ void setup() {
   radio.begin();
 
   /* Abrindo o pipe para leitura utilizando.  */
-  radio.openReadingPipe(PIPE_LEITURA, rxAddr);
+  radio.openReadingPipe(PIPE_LEITURA, rxChave);
 
   /* Habilitando o radio para a leitura propriamente dita. */
   radio.startListening();
@@ -85,7 +85,7 @@ void setup() {
 void loop() {
   /* se o radio esteja disponível... recebe as informações de velocidade e anda. */
   if(com()) {
-    anda();
+//    anda();
   }
 
   //verificaOdoEsq();
@@ -94,13 +94,22 @@ void loop() {
 
 /* Recebe comandos novos */
 bool com() {
-  bool got = radio.available();
+  if (radio.available()) {
+    radio.read(rxBuffer, sizeof(rxBuffer));
 
-  if (got) {
-    radio.read(&rxBuffer, sizeof(rxBuffer));
+    for(int i = 0; i < RX_BUFFER_SIZE; i++) {
+        Serial.print(rxBuffer[i]);
+        Serial.print(" ");
+     }
+      Serial.println();
+
     if(rxBuffer[0] == 0x80){
           Serial.println("Recebemos algo");
     }
+    return true;
+  }
+  else {
+    return false;
   }
 }
 
