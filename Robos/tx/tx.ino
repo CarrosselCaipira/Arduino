@@ -25,20 +25,9 @@ void setup() {
 
 void loop() {
     /* envia um byte para o pc */
-    Serial.println("INICIAR IRMAO");
-    delay(220);
-  for(;;) {
-      Serial.write(&Config::CARACTERE_INICIAL, 1);
-      /* garantindo que o byte foi enviado (espera enviar para seguir a execução) */
-      Serial.flush();
-      /* aguardando até a serial ficar disponível */
-      if(Serial.available())
-        break;
-  }
+    Serial.write(&Config::CARACTERE_INICIAL, 1);
 
-  /* se prepara para receber o array do pc */
-  for(;;) {
-    /* aguardando até a serial ficar disponível */
+    /* aguardando até a serial ficar disponível - se prepara para receber o array do pc*/
     if(Serial.available()) {
       /* lendo o que vem da serial (já vem com o primeiro byte 0x80.) */
       Serial.readBytes(txBuffer, Config::BUFFER_SIZE);
@@ -57,13 +46,11 @@ void loop() {
         radio.write(&txBuffer, sizeof(txBuffer)); //& indica referencia a variável indicada, isso implica em utilizar o conteúdo da varíavel sem alterá-la
       }
       else {
-        Serial.println("CARACTERE_INICIAL Errado.");
+        Serial.println("CARACTERE_INICIAL ERRADO!");
       }
-      /* recebemos o array, parando o loop e voltando a enviar o byte para o pc solicitando o proximo array. */
-      break;
     }
     else {
-      Serial.println("DEU RUIM IRMAO");
+      Serial.println("SERIAL INDISPONÍVEL!");
     }
   }
 }
