@@ -72,8 +72,8 @@ void andar(byte velEsq, byte velDir) {
   dirD = velDir < 100 ? LOW : HIGH;
 
   //Mapeamento do PWM na estrutura veloDirecao
-  velPWMEsq = map(velPWMEsq,0,127,0,255);
-  velPWMDir = map(velPWMDir,0,127,0,255);
+  velPWMEsq = map(velEsq,0,127,0,255);
+  velPWMDir = map(velDir,0,127,0,255);
 
   //definindo sentidos de movimento (frente, trás, giro esquerda e giro direita)
   // Define a velocidade de cada roda

@@ -24,8 +24,17 @@ void setup() {
 }
 
 void loop() {
-  /* envia um byte para o pc */
-  Serial.write(&Config::CARACTERE_INICIAL, 1);
+    /* envia um byte para o pc */
+    Serial.println("INICIAR IRMAO");
+    delay(220);
+  for(;;) {
+      Serial.write(&Config::CARACTERE_INICIAL, 1);
+      /* garantindo que o byte foi enviado (espera enviar para seguir a execução) */
+      Serial.flush();
+      /* aguardando até a serial ficar disponível */
+      if(Serial.available())
+        break;
+  }
 
   /* se prepara para receber o array do pc */
   for(;;) {
@@ -36,10 +45,11 @@ void loop() {
 
       /* BEGIN DEBUG */
       //Transmissão de dados
-      for(int i =0; i < Config::BUFFER_SIZE; i++) {
-        Serial.print(txBuffer[i]);
-        Serial.print(" ");
-      }
+      //Serial.println("SERIAL: ");
+      //for(int i = 0; i < Config::BUFFER_SIZE; i++) {
+      //  Serial.print(txBuffer[i]);
+      //  Serial.print(" ");
+      //}
       /* END DEBUG */
 
       /* checando se o byte recebido é valido */
@@ -51,6 +61,9 @@ void loop() {
       }
       /* recebemos o array, parando o loop e voltando a enviar o byte para o pc solicitando o proximo array. */
       break;
+    }
+    else {
+      Serial.println("DEU RUIM IRMAO");
     }
   }
 }
