@@ -47,12 +47,12 @@ void loop() {
     /* lendo o buffer do rádio */
     radio.read(&rxBuffer, sizeof(rxBuffer));
 
-    /* BEGIN DEBUG */
+    /* BEGIN DEBUG
     for (int i = 0; i < Config::BUFFER_SIZE; i++){
       Serial.print(rxBuffer[i]);
       Serial.println("");
     }
-    /* END DEBUG */
+    END DEBUG */
 
     andar(rxBuffer[INDEX_RODA_ESQ], rxBuffer[INDEX_RODA_DIR]);
   }
@@ -64,7 +64,8 @@ void loop() {
 //rotina para atuação dos motores e movimentação do robo.
 void andar(byte velEsq, byte velDir) {
   bool dirD, dirE;
-
+  int velPWMEsq, velPWMDir;
+  
   // verifica roda esquerda
   /* (expression) ? (true-value) : (false-value). Logo, se velEsq < 100 então dirE é LOW, do contrário (velEsq >= 100), dirE é HIGH */
   dirE = velEsq < 100 ? LOW : HIGH;
@@ -72,8 +73,10 @@ void andar(byte velEsq, byte velDir) {
   dirD = velDir < 100 ? LOW : HIGH;
 
   //Mapeamento do PWM na estrutura veloDirecao
-  velPWMEsq = map(velPWMEsq,0,127,0,255);
-  velPWMDir = map(velPWMDir,0,127,0,255);
+  velPWMEsq = map(velEsq,0,127,0,255);
+  velPWMDir = map(velDir,0,127,0,255);
+  //velPWMEsq = velPWMEsq*2;
+  //velPWMDir = velPWMDir*2;
 
   //definindo sentidos de movimento (frente, trás, giro esquerda e giro direita)
   // Define a velocidade de cada roda

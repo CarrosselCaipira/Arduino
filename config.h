@@ -1,6 +1,6 @@
 #include <SPI.h>
 // #include <nRF24L01.h>
-#include <RF24.h> /* http://tmrh20.github.io/RF24/ */
+#include <RF24.h> /* By TMRh20 - http://tmrh20.github.io/RF24/ */
 
 namespace Config {
   const long int SERIAL_BIT_RATE = 115200; /* Pode ser definido para 115200 ou 9600. Lembre-se de que este valor deve ser o mesmo do usado pela classe do rádio, encontrada em radio.hpp.e em RX.ino */
