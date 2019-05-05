@@ -16,6 +16,7 @@ const int INDEX_RODA_DIR = 2 + 2 * NUM_ROBO; /* index da roda direita no array r
 #define DIRECAO_PWM_MOTOR_DIR_A 8
 #define DIRECAO_PWM_MOTOR_DIR_B 9
 #define PWM_MOTOR_DIR 10
+int velPWMEsq, velPWMDir;
 
 /* ------------ Declarações Relacionadas aos Pinos do Rádio ----------- */
 #define RADIO_ENABLE 2 /* O pino ligado ao Chip Enable no módulo do rádio */
@@ -64,28 +65,52 @@ void loop() {
 //rotina para atuação dos motores e movimentação do robo.
 void andar(byte velEsq, byte velDir) {
   bool dirD, dirE;
-  int velPWMEsq, velPWMDir;
   
   // verifica roda esquerda
   /* (expression) ? (true-value) : (false-value). Logo, se velEsq < 100 então dirE é LOW, do contrário (velEsq >= 100), dirE é HIGH */
-  dirE = velEsq < 100 ? LOW : HIGH;
+  dirE = velEsq < 128 ? LOW : HIGH;
   // verifica roda direita
-  dirD = velDir < 100 ? LOW : HIGH;
+  dirD = velDir < 128 ? LOW : HIGH;
 
   //Mapeamento do PWM na estrutura veloDirecao
-  velPWMEsq = map(velEsq,0,127,0,255);
-  velPWMDir = map(velDir,0,127,0,255);
-  //velPWMEsq = velPWMEsq*2;
-  //velPWMDir = velPWMDir*2;
-
+  velPWMEsq = map(velEsq,0,255,0,255);
+  velPWMDir = map(velDir,0,255,0,255);
+  // ------- Debug Serial -----------
+  /*Serial.print("Veldir: " );
+  Serial.println((int)velPWMDir);
+  Serial.print("Velesq: ");
+  Serial.println((int)velPWMEsq);
+  Serial.println("");*/
+  
   //definindo sentidos de movimento (frente, trás, giro esquerda e giro direita)
   // Define a velocidade de cada roda
-  analogWrite(PWM_MOTOR_ESQ,velPWMEsq);
-  analogWrite(PWM_MOTOR_DIR,velPWMDir);
-
-  // Define o sentido de giro de cada roda
-  digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, dirE);
-  digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, !dirE);
-  digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, dirD);
-  digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, !dirD);
+  if (velEsq!= 128){ // MOTOR ESQUERDO
+      analogWrite(PWM_MOTOR_ESQ,velPWMEsq);
+      if(dirE){// andando para trás
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, HIGH);
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, LOW);
+      }else{ // andando para frente
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, LOW);
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, HIGH);
+      }
+  }else{ // PARA TUDO
+    analogWrite(PWM_MOTOR_ESQ, 0);
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_A, LOW);
+        digitalWrite(DIRECAO_PWM_MOTOR_ESQ_B, LOW);
+  }
+  
+   if (velDir!= 128){ // MOTOR DIREITO
+      analogWrite(PWM_MOTOR_DIR,velPWMDir);
+      if(dirD){// andando para trás
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, HIGH);
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
+      }else{ // andando para frente
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, HIGH);
+      }
+  }else{ // PARA TUDO
+    analogWrite(PWM_MOTOR_DIR, 0);
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_A, LOW);
+        digitalWrite(DIRECAO_PWM_MOTOR_DIR_B, LOW);
+  }
 }
