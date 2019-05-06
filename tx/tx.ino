@@ -24,37 +24,29 @@ void setup() {
 }
 
 void loop() {
-      for(;;){
-      /* envia um byte para o pc */
-      //Serial.write(&Config::CARACTERE_INICIAL, 1);
-      //Serial.print("EEEEE");
-      /* aguardando até a serial ficar disponível - se prepara para receber o array do pc*/
-      if(Serial.available()) {
-        /* lendo o que vem da serial (já vem com o primeiro byte 0x80.) */
-        Serial.readBytes(txBuffer, Config::BUFFER_SIZE);
-        Serial.print("DDDDD");
-  
-        /* BEGIN DEBUG */
-        //Transmissão de dados
-        //Serial.println("SERIAL: ");
-        //for(int i = 0; i < Config::BUFFER_SIZE; i++) {
-        //  Serial.print(txBuffer[i]);
-        //  Serial.print(" ");
-        //}
-        /* END DEBUG */
-  
-        /* checando se o byte recebido é valido */
-        if(txBuffer[0] == Config::CARACTERE_INICIAL) {
-          radio.write(&txBuffer, sizeof(txBuffer)); //& indica referencia a variável indicada, isso implica em utilizar o conteúdo da varíavel sem alterá-la
-          Serial.print("CCCCC");
-        }
-        else {
-          Serial.println("BBBB");
-        }
-      }
-      else {
-        Serial.println("AAAA");
-        
-      }
-     }
- }
+	/* aguardando até a serial ficar disponível - se prepara para receber o array do pc*/
+	if(Serial.available()) {
+	  /* lendo o que vem da serial (já vem com o primeiro byte 0x80.) */
+	  Serial.readBytes(txBuffer, Config::BUFFER_SIZE);
+
+	  /* BEGIN DEBUG
+	  Transmissão de dados
+	  Serial.println("SERIAL: ");
+	  for(int i = 0; i < Config::BUFFER_SIZE; i++) {
+	    Serial.print(txBuffer[i]);
+	    Serial.print(" ");
+	  }
+	  END DEBUG */
+
+	  /* checando se o byte recebido é valido */
+	  if(txBuffer[0] == Config::CARACTERE_INICIAL) {
+	    radio.write(&txBuffer, sizeof(txBuffer)); //& indica referencia a variável indicada, isso implica em utilizar o conteúdo da varíavel sem alterá-la
+	  }
+	  else {
+	    Serial.println("CARACTERE_INICIAL ERRADO!");
+	  }
+	}
+	else {
+	  Serial.println("SERIAL INDISPONÍVEL!");
+	}
+}
